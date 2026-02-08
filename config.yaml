@@ -3,6 +3,7 @@ window-size: 10
 sampling-rate: 100
 moving-threshold: 10.0
 angle-threshold: 30
+debug: true
 gesture:
   - type: Up
     control: control0

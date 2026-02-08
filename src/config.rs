@@ -3,7 +3,7 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 
 bitflags! {
-    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
     pub struct Direction: u8 {
         const UNDEFINED = 0b00000000;
         const UP =        0b00000001;
@@ -36,21 +36,25 @@ impl Direction {
 impl fmt::Display for Direction {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::new();
+        let mut parts = Vec::new();
         if self.contains(Self::UP) {
-            s.push_str("Up");
+            parts.push("UP");
         }
         if self.contains(Self::DOWN) {
-            s.push_str("Down");
+            parts.push("DOWN");
         }
         if self.contains(Self::LEFT) {
-            s.push_str("Left");
+            parts.push("LEFT");
         }
         if self.contains(Self::RIGHT) {
-            s.push_str("Right");
+            parts.push("RIGHT");
         }
 
-        write!(f, "{}", s)
+        if parts.is_empty() {
+            write!(f, "UNDEFINED")
+        } else {
+            write!(f, "{}", parts.join(" | "))
+        }
     }
 }
 
@@ -71,15 +75,14 @@ pub struct Config {
     #[serde(alias = "window-size")]
     window_size: usize,
 
-    #[deprecated]
-    #[serde(alias = "sampling-rate")]
-    sampling_rate: u32,
-
     #[serde(alias = "moving-threshold")]
     moving_threshold: f64,
 
     #[serde(alias = "angle-threshold")]
     angle_threshold: f64,
+
+    #[serde(alias = "debug")]
+    debug: bool,
 
     #[serde(alias = "gesture")]
     gestures: Vec<Gesture>,
@@ -88,6 +91,11 @@ pub struct Config {
 #[allow(unused)]
 impl Config {
     #[inline]
+    pub const fn debug(&self) -> bool {
+        self.debug
+    }
+
+    #[inline]
     pub const fn buffer_size(&self) -> usize {
         self.buffer_size
     }
@@ -95,12 +103,6 @@ impl Config {
     #[inline]
     pub const fn window_size(&self) -> usize {
         self.window_size
-    }
-
-    #[deprecated]
-    #[inline]
-    pub const fn sample_rate(&self) -> u32 {
-        self.sampling_rate
     }
 
     #[inline]

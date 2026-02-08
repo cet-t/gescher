@@ -8,10 +8,12 @@ anyhow = "1.0.100"
 bitflags = "2.10.0"
 circular-queue = "0.2.7"
 colored = "3.1.1"
-rdev = "0.5.3"
+rdev = { version = "0.5.3", features = ["unstable_grab"] }
 serde = "1.0.228"
 serde_yaml = "0.9.34"
 thousands = "0.2.0"
 tokio = { version = "1.49.0", features = ["full"] }
+muda = "0.17.1"
 tray-icon = "0.21.3"
 wide = "1.1.1"
+windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }

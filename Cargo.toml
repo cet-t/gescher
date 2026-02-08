@@ -5,10 +5,13 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+bitflags = "2.10.0"
 circular-queue = "0.2.7"
 colored = "3.1.1"
-indicatif = "0.18.3"
 rdev = "0.5.3"
+serde = "1.0.228"
+serde_yaml = "0.9.34"
 thousands = "0.2.0"
 tokio = { version = "1.49.0", features = ["full"] }
 tray-icon = "0.21.3"
+wide = "1.1.1"

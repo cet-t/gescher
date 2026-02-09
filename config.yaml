@@ -2,7 +2,9 @@ buffer-size: 1024
 window-size: 10
 sampling-rate: 100
 moving-threshold: 10.0
-angle-threshold: 30
+angle-threshold: 15
+corner-threshold: 30
+allow-diagonal: false
 debug: true
 gesture:
   - type: Up

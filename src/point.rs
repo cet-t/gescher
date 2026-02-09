@@ -16,16 +16,6 @@ impl Point {
     pub const fn zero() -> Self {
         Self { x: 0.0, y: 0.0 }
     }
-
-    #[inline]
-    pub const fn x(&self) -> f64 {
-        self.x
-    }
-
-    #[inline]
-    pub const fn y(&self) -> f64 {
-        self.y
-    }
 }
 
 impl std::ops::Add for Point {
@@ -90,11 +80,6 @@ impl Point {
     }
 
     #[inline]
-    pub fn cross(&self, other: Self) -> f64 {
-        self.x * other.y - self.y * other.x
-    }
-
-    #[inline]
     pub fn angle(&self, other: Self) -> f64 {
         let dot = self.dot(other);
         let mag_product = self.magnitude() * other.magnitude();
@@ -105,20 +90,50 @@ impl Point {
         }
     }
 
-    pub fn direction(&self, threshold: f64) -> Direction {
+    pub fn direction(&self, threshold: f64, allow_diagonal: bool) -> Direction {
         let mut dir = Direction::UNDEFINED;
         let norm_v = self.normalized();
-        if norm_v.y > threshold {
-            dir |= Direction::UP;
-        }
-        if norm_v.y < -threshold {
-            dir |= Direction::DOWN;
-        }
-        if norm_v.x > threshold {
-            dir |= Direction::RIGHT;
-        }
-        if norm_v.x < -threshold {
-            dir |= Direction::LEFT;
+
+        if allow_diagonal {
+            // 斜めを許可する場合：両方のフラグが立つ可能性がある
+            if norm_v.y > threshold {
+                dir |= Direction::UP;
+            }
+            if norm_v.y < -threshold {
+                dir |= Direction::DOWN;
+            }
+            if norm_v.x > threshold {
+                dir |= Direction::RIGHT;
+            }
+            if norm_v.x < -threshold {
+                dir |= Direction::LEFT;
+            }
+        } else {
+            // 斜めを禁止する場合：
+            // 45度付近の「どっちつかず」な方向を UNDEFINED にするため、
+            // 支配的な成分がもう一方の成分に対して十分大きいかチェックする。
+            // 角度しきい値 (threshold = sin(angle)) を利用
+            let x_abs = norm_v.x.abs();
+            let y_abs = norm_v.y.abs();
+
+            // Xが支配的かつ、Y成分がしきい値未満（＝ほぼ水平）
+            if x_abs > y_abs && y_abs < threshold {
+                if norm_v.x > 0.0 {
+                    dir = Direction::RIGHT;
+                } else {
+                    dir = Direction::LEFT;
+                }
+            }
+            // Yが支配的かつ、X成分がしきい値未満（＝ほぼ垂直）
+            else if y_abs > x_abs && x_abs < threshold {
+                if norm_v.y > 0.0 {
+                    dir = Direction::UP;
+                } else {
+                    dir = Direction::DOWN;
+                }
+            }
+            // それ以外（中途半端な斜め）は UNDEFINED になり、
+            // main.rs のループで「方向なし」として無視される。
         }
         dir
     }

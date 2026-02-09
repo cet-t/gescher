@@ -13,26 +13,6 @@ bitflags! {
     }
 }
 
-impl Direction {
-    pub fn from_flags(flags: u8) -> Self {
-        match flags {
-            0b00000001 => Self::UP,
-            0b00000101 => Self::UP | Self::LEFT,
-            0b00001001 => Self::UP | Self::RIGHT,
-
-            0b00000010 => Self::DOWN,
-            0b00000110 => Self::DOWN | Self::LEFT,
-            0b00001010 => Self::DOWN | Self::RIGHT,
-
-            0b00000100 => Self::LEFT,
-
-            0b00001000 => Self::RIGHT,
-
-            _ => Self::UNDEFINED,
-        }
-    }
-}
-
 impl fmt::Display for Direction {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -81,6 +61,12 @@ pub struct Config {
     #[serde(alias = "angle-threshold")]
     angle_threshold: f64,
 
+    #[serde(alias = "corner-threshold")]
+    corner_threshold: f64,
+
+    #[serde(alias = "allow-diagonal")]
+    allow_diagonal: bool,
+
     #[serde(alias = "debug")]
     debug: bool,
 
@@ -113,6 +99,16 @@ impl Config {
     #[inline]
     pub const fn angle_threshold(&self) -> f64 {
         self.angle_threshold
+    }
+
+    #[inline]
+    pub const fn corner_threshold(&self) -> f64 {
+        self.corner_threshold
+    }
+
+    #[inline]
+    pub const fn allow_diagonal(&self) -> bool {
+        self.allow_diagonal
     }
 
     #[inline]

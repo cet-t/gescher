@@ -22,7 +22,6 @@ use thousands::Separable;
 
 const CONFIG_PATH: &str = "config.yaml";
 
-// 解析に必要なデータをまとめた型
 struct GestureTask {
     points: Vec<Point>,
     elapsed: Duration,
@@ -50,6 +49,7 @@ fn main() -> Result<()> {
     let reader = BufReader::new(&file);
     let config = serde_yaml::from_reader::<_, Config>(reader)?;
     let angle_threshold = config.angle_threshold().to_radians();
+    let corner_threshold = config.corner_threshold().to_radians();
 
     logger::set_enabled(config.debug());
 
@@ -63,10 +63,8 @@ fn main() -> Result<()> {
             let mut points = task.points;
             points.reverse();
 
-            // 解析処理 (重い処理はここで行う)
             let denoised = denoise_vec(points, win);
             if denoised.len() < win * 2 {
-                // 動いていない場合はクリックを再発行 (このスレッドから実行)
                 app_state::add_ignore_count(2);
                 let _ = simulate(&EventType::ButtonPress(Button::Right));
                 let _ = simulate(&EventType::ButtonRelease(Button::Right));
@@ -77,25 +75,46 @@ fn main() -> Result<()> {
             let mut gesture_directions = Vec::new();
             let mut current_direction = Direction::UNDEFINED;
             let mut last_v = Point::zero();
+            let mut last_corner_idx = 0;
+            let allow_diagonal = config_analyze.allow_diagonal();
 
-            for i in (0..denoised.len().saturating_sub(win)).step_by(win) {
+            // 1ピクセルずつスライドして解析
+            for i in 0..denoised.len().saturating_sub(win) {
                 let p_start = denoised[i];
                 let p_end = denoised[i + win];
                 let seg_vec = p_end - p_start;
-                if seg_vec.magnitude() > config_analyze.moving_threshold() {
-                    let dir = seg_vec.direction(dir_threshold);
-                    if dir != Direction::UNDEFINED {
-                        if !current_direction.intersects(dir) || current_direction.is_empty() {
-                            gesture_directions.push(dir);
-                        }
-                        current_direction = dir;
-                    }
+
+                if seg_vec.magnitude() > config_analyze.moving_threshold() / 2.0 {
+                    let dir = seg_vec.direction(dir_threshold, allow_diagonal);
+
                     if last_v.magnitude() > f64::EPSILON {
                         let seg_angle = last_v.normalized().angle(seg_vec.normalized());
-                        if seg_angle > angle_threshold {
-                            // コーナー検出などのログ (必要なら)
+
+                        // 角の検知
+                        if seg_angle > corner_threshold && (i > last_corner_idx + win) {
+                            // 明確に違う方向を向いた場合のみ更新
+                            if dir != Direction::UNDEFINED && !current_direction.intersects(dir) {
+                                gesture_directions.push(dir);
+                                current_direction = dir;
+                                last_corner_idx = i;
+                            }
                         }
                     }
+
+                    // win 周期での定期的な方向確認
+                    // (UNDEFINED＝どっちつかずな状況では追加しない)
+                    if i % win == 0 && dir != Direction::UNDEFINED {
+                        if current_direction.is_empty() {
+                            gesture_directions.push(dir);
+                            current_direction = dir;
+                        } else if !current_direction.intersects(dir) {
+                            // すでに方向がある場合は、前回の方向と明確に異なる場合のみ追加
+                            // (デッドゾーンにより UNDEFINED が挟まることで、揺れによる誤登録を抑制)
+                            gesture_directions.push(dir);
+                            current_direction = dir;
+                        }
+                    }
+
                     last_v = seg_vec;
                 }
             }
@@ -132,12 +151,13 @@ fn main() -> Result<()> {
         config.buffer_size(),
     )));
     let trails_clone = Arc::clone(&trails_atm);
-    let start_time_mu = Arc::new(Mutex::new(Option::<Instant>::None));
-    let last_point_mu = Arc::new(Mutex::new(Point::zero()));
-    let st_clone = Arc::clone(&start_time_mu);
-    let lp_clone = Arc::clone(&last_point_mu);
 
-    // --- 入力監視スレッド (OSクリティカル) ---
+    let st_mu = Arc::new(Mutex::new(Option::<Instant>::None));
+    let lp_mu = Arc::new(Mutex::new(Point::zero()));
+    let st_clone = Arc::clone(&st_mu);
+    let lp_clone = Arc::clone(&lp_mu);
+
+    // --- 入力監視スレッド ---
     thread::spawn(move || {
         if let Err(e) = grab(move |event| {
             if app_state::should_ignore() {
@@ -166,7 +186,6 @@ fn main() -> Result<()> {
                         if let Ok(mut q) = trails_clone.lock() {
                             let points_vec: Vec<Point> = q.iter().cloned().collect();
                             q.clear();
-                            // 解析スレッドに丸投げ (ここでの処理時間を最小化)
                             let _ = tx.send(GestureTask {
                                 points: points_vec,
                                 elapsed,
@@ -190,7 +209,6 @@ fn main() -> Result<()> {
 
                     if is_tracking {
                         if (prev_lp - point).magnitude() > 1.0 {
-                            // 最小限のフィルタ
                             if let Ok(mut q) = trails_clone.lock() {
                                 let _ = q.push(point);
                             }

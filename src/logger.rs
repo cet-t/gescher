@@ -2,12 +2,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 static LOGGING_ENABLED: AtomicBool = AtomicBool::new(true);
 
-/// ログの有効・無効を切り替えます。
 pub fn set_enabled(enabled: bool) {
     LOGGING_ENABLED.store(enabled, Ordering::Relaxed);
 }
 
-/// ログが有効かどうかを返します。
+#[inline]
+#[allow(dead_code)]
 pub fn is_enabled() -> bool {
     LOGGING_ENABLED.load(Ordering::Relaxed)
 }

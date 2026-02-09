@@ -1,6 +1,5 @@
 use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-use tray_icon::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
-use windows_sys::Win32::UI::WindowsAndMessaging::{DispatchMessageW, MSG, PM_REMOVE, PeekMessageW};
+use tray_icon::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 pub struct TrayManager {
     _tray_icon: TrayIcon,
@@ -42,19 +41,10 @@ impl TrayManager {
     }
 
     pub fn update(&self) -> TrayAction {
-        unsafe {
-            let mut msg: MSG = std::mem::zeroed();
-            while PeekMessageW(&mut msg, 0, 0, 0, PM_REMOVE) != 0 {
-                DispatchMessageW(&msg);
-            }
-        }
+        // トレイ（アイコン）自体のイベントを確実に拾って空にする
+        while let Ok(_) = TrayIconEvent::receiver().try_recv() {}
 
-        if let Ok(event) = TrayIconEvent::receiver().try_recv() {
-            if event.click_type == MouseButton::Left {
-                // 左クリックで設定画面を開くのも良い
-            }
-        }
-
+        // メニューイベントの処理
         if let Ok(event) = MenuEvent::receiver().try_recv() {
             if event.id.0 == self.settings_id {
                 return TrayAction::OpenSettings;

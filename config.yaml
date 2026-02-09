@@ -1,41 +1,40 @@
 buffer-size: 1024
 window-size: 10
-sampling-rate: 100
 moving-threshold: 10.0
-angle-threshold: 15
-corner-threshold: 30
+angle-threshold: 22.0
+corner-threshold: 30.0
 allow-diagonal: false
 debug: true
 gesture:
-  - type: Up
-    control: control0
-  - type: UpRight
-    control: control1
-  - type: UpLeft
-    control: control2
-  - type: UpDown
-    control: control3
-  - type: Down
-    control: control4
-  - type: DownRight
-    control: control5
-  - type: DownLeft
-    control: control6
-  - type: DownDown
-    control: control7
-  - type: Left
-    control: control8
-  - type: LeftUp
-    control: control9
-  - type: LeftDown
-    control: controla
-  - type: LeftLeft
-    control: controlb
-  - type: Right
-    control: controlc
-  - type: RightUp
-    control: controld
-  - type: RightDown
-    control: controle
-  - type: RightRight
-    control: controlf
+- gesture_type: Up
+  control: control0
+- gesture_type: UpRight
+  control: control1
+- gesture_type: UpLeft
+  control: control2
+- gesture_type: UpDown
+  control: control3
+- gesture_type: Down
+  control: control4
+- gesture_type: DownRight
+  control: control5
+- gesture_type: DownLeft
+  control: control6
+- gesture_type: DownDown
+  control: control7
+- gesture_type: Left
+  control: control8
+- gesture_type: LeftUp
+  control: control9
+- gesture_type: LeftDown
+  control: controla
+- gesture_type: LeftLeft
+  control: controlb
+- gesture_type: Right
+  control: controlc
+- gesture_type: RightUp
+  control: controld
+- gesture_type: RightDown
+  control: controle
+- gesture_type: RightRight
+  control: controlf

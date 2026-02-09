@@ -48,15 +48,12 @@ fn denoise_vec(points: Vec<Point>, window_size: usize) -> Vec<Point> {
 }
 
 fn main() -> Result<()> {
-    // 1. 設定の初期読み込み
     let file = File::open(CONFIG_PATH)?;
     let reader = BufReader::new(&file);
     let initial_config = serde_yaml::from_reader::<_, Config>(reader)?;
     let config_atom = Arc::new(Mutex::new(initial_config));
-
     logger::set_enabled(config_atom.lock().unwrap().debug);
 
-    // 2. 解析専用ワーカースレッド
     let (tx, rx) = mpsc::channel::<GestureTask>();
     let config_analyze = Arc::clone(&config_atom);
     thread::spawn(move || {
@@ -85,7 +82,6 @@ fn main() -> Result<()> {
             let mut current_direction = Direction::UNDEFINED;
             let mut last_v = Point::zero();
             let mut last_corner_idx = 0;
-
             for i in 0..denoised.len().saturating_sub(win) {
                 let p_start = denoised[i];
                 let p_end = denoised[i + win];
@@ -139,23 +135,17 @@ fn main() -> Result<()> {
         }
     });
 
-    // 3. 入力監視スレッド
     let trails_atm = Arc::new(Mutex::new(CircularQueue::<Point>::with_capacity(2048)));
     let trails_clone = Arc::clone(&trails_atm);
     let st_mu = Arc::new(Mutex::new(Option::<Instant>::None));
     let lp_mu = Arc::new(Mutex::new(Point::zero()));
     let st_clone = Arc::clone(&st_mu);
     let lp_clone = Arc::clone(&lp_mu);
-
     thread::spawn(move || {
         if let Err(e) = grab(move |event| {
-            if !app_state::is_active() {
+            if !app_state::is_active() || app_state::should_ignore() {
                 return Some(event);
             }
-            if app_state::should_ignore() {
-                return Some(event);
-            }
-
             let mut intercept = false;
             match event.event_type {
                 EventType::ButtonPress(Button::Right) => {
@@ -209,10 +199,13 @@ fn main() -> Result<()> {
         }
     });
 
-    // 4. UI と トレイ管理 (メインスレッド)
+    // 4. UI と トレイ管理
     let ui = SettingsWindow::new().unwrap();
 
-    // UI コールバック
+    // 常に一個ウィンドウ（たとえ非表示でも）がある状態にしてループを維持する
+    // 実際には quit_on_last_window_closed が使えればベストだが、代替として
+    // 最初の表示を強制せず、on_close_requested で HideWindow を返す方法を試す
+
     let ui_handle_changed = ui.as_weak();
     let config_changed = Arc::clone(&config_atom);
     ui.on_setting_changed(move || {
@@ -235,19 +228,22 @@ fn main() -> Result<()> {
         let _ = conf.save(CONFIG_PATH);
     });
 
-    // UI内部のボタン要求
-    let ui_handle_hide = ui.as_weak();
+    // UI内部のボタンからの要求
+    let ui_handle_hide_btn = ui.as_weak();
     ui.on_close_requested(move || {
-        if let Some(ui) = ui_handle_hide.upgrade() {
+        if let Some(ui) = ui_handle_hide_btn.upgrade() {
             ui.hide().unwrap();
             app_state::set_active(true);
         }
     });
 
-    // タイトルバーのクローズ要求 (Xボタン)
-    // HideWindow を返すことで、ウィンドウは隠されるが「クローズ」はされず、ループが続く
+    // タイトルバーの X ボタンからの要求
+    let ui_handle_x = ui.as_weak();
     ui.window().on_close_requested(move || {
-        app_state::set_active(true);
+        if let Ok(mut st) = ui_handle_x.upgrade().unwrap().hide() {
+            app_state::set_active(true);
+        }
+        // Slint 1.x の CloseRequestResponse は HideWindow または KeepWindowShown
         slint::CloseRequestResponse::HideWindow
     });
 
@@ -283,7 +279,9 @@ fn main() -> Result<()> {
 
     println!("Gescher is running. Check system tray.");
 
-    // スレッドをブロックし、メインイベントループを開始
+    // イベントループを開始。
+    // HideWindow を返していれば、ウィンドウが隠れても「クローズ」された扱いにならず
+    // ループが維持されるはず。
     slint::run_event_loop().unwrap();
 
     Ok(())

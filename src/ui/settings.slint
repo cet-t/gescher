@@ -12,6 +12,14 @@ export component SettingsWindow inherits Window {
     height: 600px;
     background: #1e1e2e;
     default-font-family: "Inter";
+
+    // ウィンドウの×ボタンが押されたとき
+    callback close-requested(); 
+    
+    // Slint の標準イベントを上書き
+    // 注意: native ウィンドウのクローズをフックするには rust 側から .on_close_requested() を呼ぶのが一般的だが
+    // UI側の「Close」ボタンなどが確実に callback を呼ぶようにする
+    
     in-out property <int> buffer-size: 1024;
     in-out property <int> window-size: 10;
     in-out property <float> moving-threshold: 10.0;
@@ -19,8 +27,10 @@ export component SettingsWindow inherits Window {
     in-out property <float> corner-threshold: 30.0;
     in-out property <bool> allow-diagonal: false;
     in-out property <bool> debug-mode: true;
-    callback apply-settings();
-    callback close-window();
+    property <bool> is-dirty: false;
+    property <bool> show-confirm-dialog: false;
+    callback setting-changed();
+    callback save-settings();
     VerticalLayout {
         padding: 24px;
         spacing: 16px;
@@ -52,6 +62,8 @@ export component SettingsWindow inherits Window {
                     value: root.buffer-size;
                     changed(val) => {
                         root.buffer-size = val;
+                        root.is-dirty = true;
+                        root.setting-changed();
                     }
                 }
             }
@@ -69,6 +81,8 @@ export component SettingsWindow inherits Window {
                     value: root.window-size;
                     changed(val) => {
                         root.window-size = val;
+                        root.is-dirty = true;
+                        root.setting-changed();
                     }
                 }
             }
@@ -86,6 +100,8 @@ export component SettingsWindow inherits Window {
                     value: root.moving-threshold;
                     changed(val) => {
                         root.moving-threshold = val;
+                        root.is-dirty = true;
+                        root.setting-changed();
                     }
                 }
             }
@@ -103,6 +119,8 @@ export component SettingsWindow inherits Window {
                     value: root.angle-threshold;
                     changed(val) => {
                         root.angle-threshold = val;
+                        root.is-dirty = true;
+                        root.setting-changed();
                     }
                 }
             }
@@ -120,6 +138,8 @@ export component SettingsWindow inherits Window {
                     value: root.corner-threshold;
                     changed(val) => {
                         root.corner-threshold = val;
+                        root.is-dirty = true;
+                        root.setting-changed();
                     }
                 }
             }
@@ -131,6 +151,8 @@ export component SettingsWindow inherits Window {
                     checked: root.allow-diagonal;
                     toggled => {
                         root.allow-diagonal = !root.allow-diagonal;
+                        root.is-dirty = true;
+                        root.setting-changed();
                     }
                 }
 
@@ -139,6 +161,8 @@ export component SettingsWindow inherits Window {
                     checked: root.debug-mode;
                     toggled => {
                         root.debug-mode = !root.debug-mode;
+                        root.is-dirty = true;
+                        root.setting-changed();
                     }
                 }
             }
@@ -146,23 +170,83 @@ export component SettingsWindow inherits Window {
 
         Rectangle {
             vertical-stretch: 1;
-        } // Spacer
+        }
 
         HorizontalLayout {
             spacing: 12px;
             alignment: end;
             Button {
-                text: "Cancel";
+                text: "Minimize to Tray";
                 clicked => {
-                    root.close-window();
+                    if (root.is-dirty) {
+                        root.show-confirm-dialog = true;
+                    } else {
+                        root.close-requested();
+                    }
                 }
             }
 
             Button {
-                text: "Apply & Save";
+                text: "Save to File";
                 primary: true;
+                enabled: root.is-dirty;
                 clicked => {
-                    root.apply-settings();
+                    root.save-settings();
+                    root.is-dirty = false;
+                }
+            }
+        }
+    }
+
+    if root.show-confirm-dialog: Rectangle {
+        background: #000000aa;
+        TouchArea { }
+
+        Rectangle {
+            width: 300px;
+            height: 180px;
+            background: #313244;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #45475a;
+            VerticalLayout {
+                padding: 20px;
+                spacing: 20px;
+                alignment: center;
+                Text {
+                    text: "Unsaved changes detected.";
+                    color: #cdd6f4;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                Text {
+                    text: "Discard changes and minimize?";
+                    color: #a6adc8;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: center;
+                    Button {
+                        text: "Stay";
+                        clicked => {
+                            root.show-confirm-dialog = false;
+                        }
+                    }
+
+                    Button {
+                        text: "Discard & Minimize";
+                        primary: true;
+                        clicked => {
+                            root.show-confirm-dialog = false;
+                            root.close-requested();
+                        }
+                    }
                 }
             }
         }

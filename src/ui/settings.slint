@@ -1,0 +1,170 @@
+import {
+    Button,
+    CheckBox,
+    Slider,
+    GroupBox,
+    LineEdit,
+} from "std-widgets.slint";
+
+export component SettingsWindow inherits Window {
+    title: "Gescher Settings";
+    width: 500px;
+    height: 600px;
+    background: #1e1e2e;
+    default-font-family: "Inter";
+    in-out property <int> buffer-size: 1024;
+    in-out property <int> window-size: 10;
+    in-out property <float> moving-threshold: 10.0;
+    in-out property <float> angle-threshold: 22.0;
+    in-out property <float> corner-threshold: 30.0;
+    in-out property <bool> allow-diagonal: false;
+    in-out property <bool> debug-mode: true;
+    callback apply-settings();
+    callback close-window();
+    VerticalLayout {
+        padding: 24px;
+        spacing: 16px;
+        Text {
+            text: "Gescher Configuration";
+            font-size: 24px;
+            font-weight: 700;
+            color: #cdd6f4;
+            horizontal-alignment: center;
+        }
+
+        Rectangle {
+            height: 1px;
+            background: #45475a;
+        }
+
+        VerticalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Buffer Size (points): \{root.buffer-size}";
+                    color: #bac2de;
+                }
+
+                Slider {
+                    minimum: 128;
+                    maximum: 2048;
+                    value: root.buffer-size;
+                    changed(val) => {
+                        root.buffer-size = val;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Window Size: \{root.window-size}";
+                    color: #bac2de;
+                }
+
+                Slider {
+                    minimum: 2;
+                    maximum: 50;
+                    value: root.window-size;
+                    changed(val) => {
+                        root.window-size = val;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Moving Threshold: \{round(root.moving-threshold * 10) / 10}";
+                    color: #bac2de;
+                }
+
+                Slider {
+                    minimum: 1.0;
+                    maximum: 50.0;
+                    value: root.moving-threshold;
+                    changed(val) => {
+                        root.moving-threshold = val;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Angle Threshold (deg): \{round(root.angle-threshold)}";
+                    color: #bac2de;
+                }
+
+                Slider {
+                    minimum: 5;
+                    maximum: 90;
+                    value: root.angle-threshold;
+                    changed(val) => {
+                        root.angle-threshold = val;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Corner Threshold (deg): \{round(root.corner-threshold)}";
+                    color: #bac2de;
+                }
+
+                Slider {
+                    minimum: 5;
+                    maximum: 90;
+                    value: root.corner-threshold;
+                    changed(val) => {
+                        root.corner-threshold = val;
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 20px;
+                CheckBox {
+                    text: "Allow Diagonal";
+                    checked: root.allow-diagonal;
+                    toggled => {
+                        root.allow-diagonal = !root.allow-diagonal;
+                    }
+                }
+
+                CheckBox {
+                    text: "Debug Mode";
+                    checked: root.debug-mode;
+                    toggled => {
+                        root.debug-mode = !root.debug-mode;
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        } // Spacer
+
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: end;
+            Button {
+                text: "Cancel";
+                clicked => {
+                    root.close-window();
+                }
+            }
+
+            Button {
+                text: "Apply & Save";
+                primary: true;
+                clicked => {
+                    root.apply-settings();
+                }
+            }
+        }
+    }
+}

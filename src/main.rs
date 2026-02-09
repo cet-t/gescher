@@ -7,11 +7,12 @@ mod tray;
 
 use crate::config::{Config, Direction};
 use crate::point::Point;
-use crate::tray::TrayManager;
+use crate::tray::{TrayAction, TrayManager};
 use anyhow::Result;
 use circular_queue::CircularQueue;
 use colored::Colorize;
 use rdev::{Button, EventType, grab, simulate};
+use slint::ComponentHandle;
 use std::f64;
 use std::fs::File;
 use std::io::BufReader;
@@ -19,6 +20,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 use thousands::Separable;
+
+slint::include_modules!();
 
 const CONFIG_PATH: &str = "config.yaml";
 
@@ -47,19 +50,31 @@ fn denoise_vec(points: Vec<Point>, window_size: usize) -> Vec<Point> {
 fn main() -> Result<()> {
     let file = File::open(CONFIG_PATH)?;
     let reader = BufReader::new(&file);
-    let config = serde_yaml::from_reader::<_, Config>(reader)?;
-    let angle_threshold = config.angle_threshold().to_radians();
-    let corner_threshold = config.corner_threshold().to_radians();
+    let initial_config = serde_yaml::from_reader::<_, Config>(reader)?;
 
-    logger::set_enabled(config.debug());
+    // 設定を共有管理
+    let config_atom = Arc::new(Mutex::new(initial_config));
+    let config_main = Arc::clone(&config_atom);
+
+    logger::set_enabled(config_main.lock().unwrap().debug);
 
     let (tx, rx) = mpsc::channel::<GestureTask>();
-    let config_analyze = config.clone();
+    let config_analyze = Arc::clone(&config_atom);
 
     // --- 解析専用ワーカースレッド ---
     thread::spawn(move || {
         while let Ok(task) = rx.recv() {
-            let win = config_analyze.window_size();
+            let (win, m_threshold, a_threshold, c_threshold, allow_diagonal) = {
+                let conf = config_analyze.lock().unwrap();
+                (
+                    conf.window_size,
+                    conf.moving_threshold,
+                    conf.angle_threshold.to_radians(),
+                    conf.corner_threshold.to_radians(),
+                    conf.allow_diagonal,
+                )
+            };
+
             let mut points = task.points;
             points.reverse();
 
@@ -71,28 +86,23 @@ fn main() -> Result<()> {
                 continue;
             }
 
-            let dir_threshold = angle_threshold.sin();
+            let dir_threshold = a_threshold.sin();
             let mut gesture_directions = Vec::new();
             let mut current_direction = Direction::UNDEFINED;
             let mut last_v = Point::zero();
             let mut last_corner_idx = 0;
-            let allow_diagonal = config_analyze.allow_diagonal();
 
-            // 1ピクセルずつスライドして解析
             for i in 0..denoised.len().saturating_sub(win) {
                 let p_start = denoised[i];
                 let p_end = denoised[i + win];
                 let seg_vec = p_end - p_start;
 
-                if seg_vec.magnitude() > config_analyze.moving_threshold() / 2.0 {
+                if seg_vec.magnitude() > m_threshold / 2.0 {
                     let dir = seg_vec.direction(dir_threshold, allow_diagonal);
 
                     if last_v.magnitude() > f64::EPSILON {
                         let seg_angle = last_v.normalized().angle(seg_vec.normalized());
-
-                        // 角の検知
-                        if seg_angle > corner_threshold && (i > last_corner_idx + win) {
-                            // 明確に違う方向を向いた場合のみ更新
+                        if seg_angle > c_threshold && (i > last_corner_idx + win) {
                             if dir != Direction::UNDEFINED && !current_direction.intersects(dir) {
                                 gesture_directions.push(dir);
                                 current_direction = dir;
@@ -101,20 +111,12 @@ fn main() -> Result<()> {
                         }
                     }
 
-                    // win 周期での定期的な方向確認
-                    // (UNDEFINED＝どっちつかずな状況では追加しない)
                     if i % win == 0 && dir != Direction::UNDEFINED {
-                        if current_direction.is_empty() {
-                            gesture_directions.push(dir);
-                            current_direction = dir;
-                        } else if !current_direction.intersects(dir) {
-                            // すでに方向がある場合は、前回の方向と明確に異なる場合のみ追加
-                            // (デッドゾーンにより UNDEFINED が挟まることで、揺れによる誤登録を抑制)
+                        if current_direction.is_empty() || !current_direction.intersects(dir) {
                             gesture_directions.push(dir);
                             current_direction = dir;
                         }
                     }
-
                     last_v = seg_vec;
                 }
             }
@@ -147,11 +149,9 @@ fn main() -> Result<()> {
         }
     });
 
-    let trails_atm = Arc::new(Mutex::new(CircularQueue::<Point>::with_capacity(
-        config.buffer_size(),
-    )));
+    let config_grab = Arc::clone(&config_atom);
+    let trails_atm = Arc::new(Mutex::new(CircularQueue::<Point>::with_capacity(2048)));
     let trails_clone = Arc::clone(&trails_atm);
-
     let st_mu = Arc::new(Mutex::new(Option::<Instant>::None));
     let lp_mu = Arc::new(Mutex::new(Point::zero()));
     let st_clone = Arc::clone(&st_mu);
@@ -227,10 +227,66 @@ fn main() -> Result<()> {
     println!("Gescher is running. Check system tray.");
 
     loop {
-        if tray_manager.update() {
-            break;
+        match tray_manager.update() {
+            TrayAction::OpenSettings => {
+                let config_ui = Arc::clone(&config_atom);
+                thread::spawn(move || {
+                    let ui = SettingsWindow::new().unwrap();
+
+                    // 現在の設定を UI に反映
+                    {
+                        let conf = config_ui.lock().unwrap();
+                        ui.set_buffer_size(conf.buffer_size as i32);
+                        ui.set_window_size(conf.window_size as i32);
+                        ui.set_moving_threshold(conf.moving_threshold as f32);
+                        ui.set_angle_threshold(conf.angle_threshold as f32);
+                        ui.set_corner_threshold(conf.corner_threshold as f32);
+                        ui.set_allow_diagonal(conf.allow_diagonal);
+                        ui.set_debug_mode(conf.debug);
+                    }
+
+                    let ui_handle = ui.as_weak();
+                    let config_save = Arc::clone(&config_ui);
+
+                    ui.on_apply_settings(move || {
+                        if let Some(ui) = ui_handle.upgrade() {
+                            let mut conf = config_save.lock().unwrap();
+                            conf.buffer_size = ui.get_buffer_size() as usize;
+                            conf.window_size = ui.get_window_size() as usize;
+                            conf.moving_threshold = ui.get_moving_threshold() as f64;
+                            conf.angle_threshold = ui.get_angle_threshold() as f64;
+                            conf.corner_threshold = ui.get_corner_threshold() as f64;
+                            conf.allow_diagonal = ui.get_allow_diagonal();
+                            conf.debug = ui.get_debug_mode();
+
+                            if let Err(e) = conf.save(CONFIG_PATH) {
+                                println!("Failed to save config: {:?}", e);
+                            } else {
+                                println!("Settings saved and applied.");
+                                logger::set_enabled(conf.debug);
+                            }
+                            ui.hide().unwrap();
+                        }
+                    });
+
+                    let ui_handle_close = ui.as_weak();
+                    ui.on_close_window(move || {
+                        if let Some(ui) = ui_handle_close.upgrade() {
+                            ui.hide().unwrap();
+                        }
+                    });
+
+                    ui.run().unwrap();
+                });
+            }
+            TrayAction::Exit => {
+                println!("Exiting...");
+                break;
+            }
+            TrayAction::None => {}
         }
         thread::sleep(Duration::from_millis(10));
     }
+
     Ok(())
 }

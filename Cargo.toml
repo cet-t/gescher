@@ -11,9 +11,13 @@ colored = "3.1.1"
 rdev = { version = "0.5.3", features = ["unstable_grab"] }
 serde = "1.0.228"
 serde_yaml = "0.9.34"
+slint = "1.9"
 thousands = "0.2.0"
 tokio = { version = "1.49.0", features = ["full"] }
 muda = "0.17.1"
 tray-icon = "0.21.3"
 wide = "1.1.1"
 windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
+[build-dependencies]
+slint-build = "1.9"

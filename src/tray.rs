@@ -1,70 +1,68 @@
-use crate::app_state;
-use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::{MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
+use windows_sys::Win32::UI::WindowsAndMessaging::{DispatchMessageW, MSG, PM_REMOVE, PeekMessageW};
 
 pub struct TrayManager {
     _tray_icon: TrayIcon,
-    toggle_item: CheckMenuItem,
-    quit_item: MenuItem,
+    settings_id: String,
+    exit_id: String,
+}
+
+pub enum TrayAction {
+    None,
+    OpenSettings,
+    Exit,
 }
 
 impl TrayManager {
     pub fn new() -> Self {
         let menu = Menu::new();
-        let toggle_item = CheckMenuItem::new("有効", true, true, None);
-        let quit_item = MenuItem::new("終了", true, None);
+        let settings_item = MenuItem::new("Settings", true, None);
+        let settings_id = settings_item.id().0.clone();
 
-        menu.append_items(&[&toggle_item, &PredefinedMenuItem::separator(), &quit_item])
-            .unwrap();
+        let exit_item = MenuItem::new("Exit", true, None);
+        let exit_id = exit_item.id().0.clone();
 
-        let icon = Self::load_icon();
+        let _ = menu.append_items(&[&settings_item, &PredefinedMenuItem::separator(), &exit_item]);
+
+        let icon = tray_icon::Icon::from_rgba(vec![128; 32 * 32 * 4], 32, 32).unwrap();
 
         let tray_icon = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
-            .with_menu_on_left_click(true)
-            .with_tooltip("Gescher Mouse Gesture")
+            .with_tooltip("Gescher")
             .with_icon(icon)
             .build()
             .unwrap();
 
         Self {
             _tray_icon: tray_icon,
-            toggle_item,
-            quit_item,
+            settings_id,
+            exit_id,
         }
     }
 
-    fn load_icon() -> Icon {
-        let width = 16;
-        let height = 16;
-        let rgba = vec![64, 64, 64, 255].repeat(width * height);
-        Icon::from_rgba(rgba, width as u32, height as u32).expect("Failed to create icon")
-    }
-
-    pub fn update(&self) -> bool {
-        #[cfg(target_os = "windows")]
+    pub fn update(&self) -> TrayAction {
         unsafe {
-            use windows_sys::Win32::UI::WindowsAndMessaging::{
-                DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
-            };
             let mut msg: MSG = std::mem::zeroed();
             while PeekMessageW(&mut msg, 0, 0, 0, PM_REMOVE) != 0 {
-                TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
         }
 
-        while let Ok(_event) = TrayIconEvent::receiver().try_recv() {}
-
-        while let Ok(event) = MenuEvent::receiver().try_recv() {
-            if event.id == self.toggle_item.id() {
-                let active = self.toggle_item.is_checked();
-                app_state::set_active(active);
-                println!("App Activity Toggled: {}", active);
-            } else if event.id == self.quit_item.id() {
-                return true;
+        if let Ok(event) = TrayIconEvent::receiver().try_recv() {
+            if event.click_type == MouseButton::Left {
+                // 左クリックで設定画面を開くのも良い
             }
         }
-        false
+
+        if let Ok(event) = MenuEvent::receiver().try_recv() {
+            if event.id.0 == self.settings_id {
+                return TrayAction::OpenSettings;
+            } else if event.id.0 == self.exit_id {
+                return TrayAction::Exit;
+            }
+        }
+
+        TrayAction::None
     }
 }

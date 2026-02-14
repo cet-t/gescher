@@ -42,11 +42,36 @@ impl fmt::Display for Direction {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Gesture {
-    #[serde(alias = "type")]
-    pub gesture_type: String,
+    #[serde(alias = "trigger")]
+    pub trigger: String,
 
     #[serde(alias = "control")]
-    pub control: String,
+    pub control: Option<String>,
+
+    #[serde(alias = "command")]
+    pub command: Option<String>,
+
+    #[serde(alias = "text")]
+    pub text: Option<String>,
+
+    #[serde(alias = "keys")]
+    pub keys: Option<String>,
+
+    #[serde(alias = "target")]
+    pub target_bin: Option<String>,
+
+    #[serde(alias = "repeat-count", rename = "repeat-count", default)]
+    pub repeat_count: Option<u32>,
+
+    #[serde(alias = "repeat-interval", rename = "repeat-interval", default)]
+    pub repeat_interval: Option<u64>,
+
+    #[serde(alias = "enabled", rename = "enabled", default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -75,7 +100,7 @@ pub struct Config {
     #[serde(alias = "language", rename = "language", default = "default_language")]
     pub language: String,
 
-    #[serde(alias = "gesture", rename = "gesture")]
+    #[serde(alias = "gestures", rename = "gesture")]
     pub gestures: Vec<Gesture>,
 }
 
@@ -89,5 +114,9 @@ impl Config {
         let mut file = File::create(path)?;
         file.write_all(yaml.as_bytes())?;
         Ok(())
+    }
+
+    pub fn gestures(&self) -> &Vec<Gesture> {
+        &self.gestures
     }
 }

@@ -24,3 +24,10 @@ pub fn should_ignore() -> bool {
 pub fn add_ignore_count(count: usize) {
     IGNORE_COUNT.fetch_add(count, Ordering::Relaxed);
 }
+
+pub fn get_active_window_process_path() -> Option<String> {
+    match active_win_pos_rs::get_active_window() {
+        Ok(window) => Some(window.process_path.to_string_lossy().to_string()),
+        Err(_) => None,
+    }
+}

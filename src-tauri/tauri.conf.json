@@ -14,11 +14,12 @@
       {
         "label": "main",
         "title": "Gescher Settings",
-        "width": 500,
-        "height": 700,
+        "width": 900,
+        "height": 750,
         "resizable": true,
         "fullscreen": false,
-        "visible": true
+        "visible": true,
+        "alwaysOnTop": true
       }
     ],
     "security": {

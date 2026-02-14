@@ -17,3 +17,4 @@ muda = "0.17.1"
 tray-icon = "0.21.3"
 wide = "1.1.1"
 windows-sys = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+active-win-pos-rs = "0.8"

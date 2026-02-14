@@ -129,16 +129,51 @@ fn main() -> Result<()> {
                         .bright_white(),
                     denoised.len().separate_with_commas().bright_white()
                 );
+                let detected_str = gesture_directions
+                    .iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
+
                 println!(
                     "{:<20} {}",
                     "gesture".bright_purple().bold(),
-                    gesture_directions
-                        .iter()
-                        .map(|d| d.to_string())
-                        .collect::<Vec<_>>()
-                        .join(" -> ")
-                        .bright_white()
+                    detected_str.bright_white()
                 );
+
+                let current_app = app_state::get_active_window_process_path();
+
+                for g in config_analyze.gestures() {
+                    if g.trigger == detected_str {
+                        // アプリケーション制限のチェック
+                        if let Some(target) = &g.target_bin {
+                            if let Some(app_path) = &current_app {
+                                // .exe を含むフルパスと部分一致でチェック
+                                if !app_path.contains(target) {
+                                    continue;
+                                }
+                            } else {
+                                continue; // アプリパスが取れない場合はスキップ
+                            }
+                        }
+
+                        // コマンド実行
+                        if let Some(cmd) = &g.command {
+                            println!("{:<20} {}", "execute".bright_yellow().bold(), cmd);
+
+                            #[cfg(target_os = "windows")]
+                            let res = std::process::Command::new("cmd").args(["/C", cmd]).spawn();
+                            #[cfg(not(target_os = "windows"))]
+                            let res = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
+
+                            if let Err(e) = res {
+                                println!("{:<20} {}", "error".bright_red().bold(), e);
+                            }
+                        } else if let Some(ctrl) = &g.control {
+                            println!("{:<20} {}", "control".cyan().bold(), ctrl);
+                        }
+                    }
+                }
             } else {
                 app_state::add_ignore_count(2);
                 let _ = simulate(&EventType::ButtonPress(Button::Right));

@@ -40,11 +40,17 @@ impl fmt::Display for Direction {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Gesture {
-    #[serde(alias = "type")]
-    pub gesture_type: String,
+    #[serde(alias = "type", rename = "trigger")]
+    pub trigger: String,
 
     #[serde(alias = "control")]
-    pub control: String,
+    pub control: Option<String>,
+
+    #[serde(alias = "command")]
+    pub command: Option<String>,
+
+    #[serde(alias = "target")]
+    pub target_bin: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

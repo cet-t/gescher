@@ -10,6 +10,12 @@
   --reg-subtext: #9399b2;
 }
 
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 .container {
   display: flex;
   flex-direction: column;
@@ -60,16 +66,23 @@
   padding: 2px;
 }
 
-.reg-menu-top-item:hover .reg-dropdown {
+.reg-menu-top-item:hover > .reg-dropdown {
   display: flex;
 }
 
 .reg-dropdown-item {
+  position: relative;
   padding: 4px 20px 4px 30px;
   cursor: default;
   display: flex;
   justify-content: space-between;
   white-space: nowrap;
+  color: var(--reg-text);
+}
+
+.reg-dropdown-item.active {
+  background: var(--reg-hover);
+  color: var(--reg-text);
 }
 
 .reg-dropdown-item:hover {
@@ -81,6 +94,10 @@
   margin-left: 20px;
   opacity: 0.7;
   font-size: 11px;
+}
+
+.reg-dropdown-item:hover > .reg-dropdown {
+  display: flex;
 }
 
 .reg-dropdown-divider {
@@ -184,13 +201,36 @@
 }
 
 .reg-table tr.selected {
-  background: var(--reg-hover);
+  background: rgba(203, 166, 247, 0.15);
+  border-left: 3px solid var(--reg-accent);
 }
 
 .reg-icon-val {
   color: #89b4fa;
   margin-right: 8px;
   font-family: "JetBrains Mono", monospace;
+}
+
+.reg-slider {
+  width: 60%;
+  vertical-align: middle;
+}
+
+.reg-spinbox {
+  width: 70px;
+  margin-left: 10px;
+  padding: 2px 6px;
+  background: var(--reg-sidebar);
+  color: var(--reg-text);
+  border: 1px solid var(--reg-border);
+  border-radius: 2px;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 12px;
+}
+
+.reg-spinbox:focus {
+  outline: none;
+  border-color: var(--reg-accent);
 }
 
 /* Bottom Actions and Logs */
@@ -261,6 +301,11 @@
 }
 .reg-log-item .msg {
   color: var(--reg-accent);
+}
+
+.reg-log-item .app {
+  color: #89b4fa;
+  margin-right: 10px;
 }
 
 /* Range / Toggle in table */

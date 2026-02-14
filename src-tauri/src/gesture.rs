@@ -3,12 +3,30 @@ use crate::config::{Config, Direction};
 use crate::point::Point;
 use circular_queue::CircularQueue;
 use colored::Colorize;
-use rdev::{Button, EventType, grab, simulate};
+use rdev::{Button, EventType, Key, grab, simulate};
 use std::f64;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 use thousands::Separable;
+
+lazy_static::lazy_static! {
+    static ref RECORDING_MODE: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+    static ref RECORDED_GESTURE: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+}
+
+pub fn start_recording(_app: tauri::AppHandle) {
+    *RECORDING_MODE.lock().unwrap() = true;
+    *RECORDED_GESTURE.lock().unwrap() = None;
+    println!("Gesture recording started");
+}
+
+pub fn stop_recording() -> Result<String, String> {
+    *RECORDING_MODE.lock().unwrap() = false;
+    let gesture = RECORDED_GESTURE.lock().unwrap().clone();
+    println!("Gesture recording stopped: {:?}", gesture);
+    gesture.ok_or_else(|| "No gesture recorded".to_string())
+}
 
 struct GestureTask {
     points: Vec<Point>,
@@ -97,13 +115,43 @@ pub fn start_gesture_service(app_handle: tauri::AppHandle, config_atom: Arc<Mute
             }
 
             if !gesture_directions.is_empty() {
+                // コンテキストメニューが出てしまっている場合に閉じる
+                let _ = simulate(&EventType::KeyPress(Key::Escape));
+                let _ = simulate(&EventType::KeyRelease(Key::Escape));
+
                 let dirs_str: Vec<String> =
                     gesture_directions.iter().map(|d| d.to_string()).collect();
+                let detected_str = dirs_str.join(" -> ");
+
+                // アクション実行
+                let current_app = match active_win_pos_rs::get_active_window() {
+                    Ok(window) => Some(window.process_path.to_string_lossy().to_string()),
+                    Err(_) => None,
+                };
+
+                let app_name = current_app
+                    .as_ref()
+                    .map(|p| {
+                        std::path::Path::new(p)
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                    })
+                    .unwrap_or(std::borrow::Cow::Borrowed("Unknown"));
 
                 // デバッグモード時はイベントを発行
                 if debug {
                     use tauri::Emitter;
-                    let _ = app_handle_analyze.emit("gesture-detected", &dirs_str);
+                    #[derive(Clone, serde::Serialize)]
+                    struct GestureDetectedPayload {
+                        gestures: Vec<String>,
+                        app_name: String,
+                    }
+                    let payload = GestureDetectedPayload {
+                        gestures: dirs_str.clone(),
+                        app_name: app_name.to_string(),
+                    };
+                    let _ = app_handle_analyze.emit("gesture-detected", &payload);
                 }
 
                 println!(
@@ -117,9 +165,179 @@ pub fn start_gesture_service(app_handle: tauri::AppHandle, config_atom: Arc<Mute
                 );
                 println!(
                     "{:<20} {}",
-                    "gesture".bright_purple().bold(),
-                    dirs_str.join(" -> ").bright_white()
+                    "app".bright_blue().bold(),
+                    app_name.bright_white()
                 );
+                println!(
+                    "{:<20} {}",
+                    "gesture".bright_purple().bold(),
+                    detected_str.bright_white()
+                );
+
+                // 記録モードチェック
+                let is_recording = *RECORDING_MODE.lock().unwrap();
+                if is_recording {
+                    *RECORDED_GESTURE.lock().unwrap() = Some(detected_str.clone());
+                    use tauri::Emitter;
+                    let _ = app_handle_analyze.emit("gesture-recorded", &detected_str);
+                    println!(
+                        "{:<20} {}",
+                        "recorded".bright_cyan().bold(),
+                        detected_str.bright_white()
+                    );
+                    continue; // 記録モード中は通常のアクション実行をスキップ
+                }
+
+                for g in config_analyze.lock().unwrap().gestures() {
+                    if !g.enabled {
+                        continue;
+                    }
+
+                    if g.trigger == detected_str {
+                        // アプリケーション制限
+                        if let Some(target) = &g.target_bin {
+                            if let Some(app_path) = &current_app {
+                                if !app_path.contains(target) {
+                                    continue;
+                                }
+                            } else {
+                                continue;
+                            }
+                        }
+
+                        // コマンド実行
+                        if let Some(cmd) = &g.command {
+                            println!("{:<20} {}", "execute".bright_yellow().bold(), cmd);
+                            #[cfg(target_os = "windows")]
+                            let _ = std::process::Command::new("cmd").args(["/C", cmd]).spawn();
+                            #[cfg(not(target_os = "windows"))]
+                            let _ = std::process::Command::new("sh").arg("-c").arg(cmd).spawn();
+                        }
+
+                        // テキスト入力
+                        if let Some(text) = &g.text {
+                            println!("{:<20} {}", "text input".bright_cyan().bold(), text);
+                            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                                if clipboard.set_text(text.clone()).is_ok() {
+                                    // 貼り付け操作 (Ctrl+V or Cmd+V)
+                                    #[cfg(target_os = "macos")]
+                                    let modifier = rdev::Key::MetaLeft;
+                                    #[cfg(not(target_os = "macos"))]
+                                    let modifier = rdev::Key::ControlLeft;
+
+                                    let _ = simulate(&EventType::KeyPress(modifier));
+                                    let _ = simulate(&EventType::KeyPress(rdev::Key::KeyV));
+                                    let _ = simulate(&EventType::KeyRelease(rdev::Key::KeyV));
+                                    let _ = simulate(&EventType::KeyRelease(modifier));
+                                }
+                            }
+                        }
+
+                        // キー入力 (例: "Ctrl+Shift+T")
+                        if let Some(keys_str) = &g.keys {
+                            println!("{:<20} {}", "key input".bright_magenta().bold(), keys_str);
+                            let parts: Vec<&str> = keys_str.split('+').collect();
+                            let mut keys_to_press = Vec::new();
+
+                            for part in parts {
+                                let key = match part.trim().to_lowercase().as_str() {
+                                    "ctrl" | "control" => rdev::Key::ControlLeft,
+                                    "shift" => rdev::Key::ShiftLeft,
+                                    "alt" => rdev::Key::Alt,
+                                    "meta" | "super" | "win" | "cmd" => rdev::Key::MetaLeft,
+                                    "enter" | "return" => rdev::Key::Return,
+                                    "space" => rdev::Key::Space,
+                                    "backspace" => rdev::Key::Backspace,
+                                    "delete" | "del" => rdev::Key::Delete,
+                                    "tab" => rdev::Key::Tab,
+                                    "esc" | "escape" => rdev::Key::Escape,
+                                    "up" => rdev::Key::UpArrow,
+                                    "down" => rdev::Key::DownArrow,
+                                    "left" => rdev::Key::LeftArrow,
+                                    "right" => rdev::Key::RightArrow,
+                                    "f1" => rdev::Key::F1,
+                                    "f2" => rdev::Key::F2,
+                                    "f3" => rdev::Key::F3,
+                                    "f4" => rdev::Key::F4,
+                                    "f5" => rdev::Key::F5,
+                                    "f6" => rdev::Key::F6,
+                                    "f7" => rdev::Key::F7,
+                                    "f8" => rdev::Key::F8,
+                                    "f9" => rdev::Key::F9,
+                                    "f10" => rdev::Key::F10,
+                                    "f11" => rdev::Key::F11,
+                                    "f12" => rdev::Key::F12,
+                                    s if s.len() == 1 => {
+                                        let c = s.chars().next().unwrap();
+                                        match c {
+                                            'a' => rdev::Key::KeyA,
+                                            'b' => rdev::Key::KeyB,
+                                            'c' => rdev::Key::KeyC,
+                                            'd' => rdev::Key::KeyD,
+                                            'e' => rdev::Key::KeyE,
+                                            'f' => rdev::Key::KeyF,
+                                            'g' => rdev::Key::KeyG,
+                                            'h' => rdev::Key::KeyH,
+                                            'i' => rdev::Key::KeyI,
+                                            'j' => rdev::Key::KeyJ,
+                                            'k' => rdev::Key::KeyK,
+                                            'l' => rdev::Key::KeyL,
+                                            'm' => rdev::Key::KeyM,
+                                            'n' => rdev::Key::KeyN,
+                                            'o' => rdev::Key::KeyO,
+                                            'p' => rdev::Key::KeyP,
+                                            'q' => rdev::Key::KeyQ,
+                                            'r' => rdev::Key::KeyR,
+                                            's' => rdev::Key::KeyS,
+                                            't' => rdev::Key::KeyT,
+                                            'u' => rdev::Key::KeyU,
+                                            'v' => rdev::Key::KeyV,
+                                            'w' => rdev::Key::KeyW,
+                                            'x' => rdev::Key::KeyX,
+                                            'y' => rdev::Key::KeyY,
+                                            'z' => rdev::Key::KeyZ,
+                                            '0' => rdev::Key::Num0,
+                                            '1' => rdev::Key::Num1,
+                                            '2' => rdev::Key::Num2,
+                                            '3' => rdev::Key::Num3,
+                                            '4' => rdev::Key::Num4,
+                                            '5' => rdev::Key::Num5,
+                                            '6' => rdev::Key::Num6,
+                                            '7' => rdev::Key::Num7,
+                                            '8' => rdev::Key::Num8,
+                                            '9' => rdev::Key::Num9,
+                                            _ => rdev::Key::Unknown(0),
+                                        }
+                                    }
+                                    _ => rdev::Key::Unknown(0),
+                                };
+                                if key != rdev::Key::Unknown(0) {
+                                    keys_to_press.push(key);
+                                }
+                            }
+
+                            // 繰り返し設定
+                            let repeat_count = g.repeat_count.unwrap_or(1).max(1);
+                            let repeat_interval = g.repeat_interval.unwrap_or(0);
+
+                            for i in 0..repeat_count {
+                                // キープレス
+                                for k in &keys_to_press {
+                                    let _ = simulate(&EventType::KeyPress(*k));
+                                }
+                                // キーリリースは逆順に行う
+                                for k in keys_to_press.iter().rev() {
+                                    let _ = simulate(&EventType::KeyRelease(*k));
+                                }
+
+                                // 最後の繰り返し以外は待機
+                                if i < repeat_count - 1 && repeat_interval > 0 {
+                                    thread::sleep(Duration::from_millis(repeat_interval));
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
                 app_state::add_ignore_count(2);
                 let _ = simulate(&EventType::ButtonPress(Button::Right));

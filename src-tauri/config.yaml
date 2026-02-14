@@ -1,0 +1,36 @@
+buffer-size: 1024
+window-size: 10
+moving-threshold: 10.0
+angle-threshold: 15.0
+corner-threshold: 30.0
+allow-diagonal: false
+debug: true
+language: ja
+gesture:
+  - trigger: DOWN
+    control: null
+    command: null
+    text: null
+    keys: Ctrl+T
+    target_bin: chrome.exe
+    repeat-count: null
+    repeat-interval: null
+    enabled: true
+  - trigger: DOWN -> RIGHT
+    control: null
+    command: null
+    text: null
+    keys: Ctrl+W
+    target_bin: chrome.exe
+    repeat-count: null
+    repeat-interval: null
+    enabled: true
+  - trigger: UP -> RIGHT
+    control: null
+    command: null
+    text: null
+    keys: Ctrl+Shift+T
+    target_bin: chrome.exe
+    repeat-count: null
+    repeat-interval: null
+    enabled: true
